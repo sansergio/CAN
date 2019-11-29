@@ -74,10 +74,12 @@ volatile uint32_t received_mb_idx;
 flexcan_handle_t flexcanHandle;
 flexcan_mb_transfer_t tx100Xfer, tx50Xfer, rx1Xfer, rx2Xfer;
 flexcan_frame_t tx100Frame, tx50Frame, rx1Frame, rx2Frame;
-uint32_t tx100Identifier = 0x100;
+uint32_t tx100Identifier = 0x020;
 uint32_t tx50Identifier = 0x50;
-uint32_t rx1Identifier = 0x101;
-uint32_t rx2Identifier = 0x102;
+uint32_t rx1Identifier = 0x010;
+uint32_t rx2Identifier = 0x011;
+uint16_t adc1 = 0;
+uint8_t  period1 = 10;
 
 /*******************************************************************************
  * Code
@@ -165,7 +167,7 @@ int main(void)
 	CAN_Init();
 
     xTaskCreate(task_100ms, "100ms Task", configMINIMAL_STACK_SIZE + 10, NULL, hello_task_PRIORITY, NULL);
-    xTaskCreate(task_50ms, "50ms Task", configMINIMAL_STACK_SIZE + 10, NULL, hello_task_PRIORITY, NULL);
+    //xTaskCreate(task_50ms, "50ms Task", configMINIMAL_STACK_SIZE + 10, NULL, hello_task_PRIORITY, NULL);
     xTaskCreate(task_rx, "rx Task", (configMINIMAL_STACK_SIZE + 10)*2, NULL, hello_task_PRIORITY, NULL);
     vTaskStartScheduler();
 
@@ -198,11 +200,12 @@ static void task_100ms(void *pvParameters)
     	tx100Xfer.mbIdx = TX100_MESSAGE_BUFFER_NUM;
     	FLEXCAN_TransferSendNonBlocking(EXAMPLE_CAN, &flexcanHandle, &tx100Xfer);
 
-    	tx100Frame.dataByte0 = 100;
-    	tx100Frame.dataByte1++;
+    	tx100Frame.dataByte0 = (adc1>>4)&0x00FF;
+    	tx100Frame.dataByte1 = ((adc1<<4)&0x00F0);
 
         // Wait for the next cycle.
-        vTaskDelayUntil( &xLastWakeTime, xFrequency);
+        vTaskDelayUntil( &xLastWakeTime, (xFrequency*period1)/portTICK_PERIOD_MS);
+        adc1 += 100;
     }
 }
 
@@ -271,6 +274,8 @@ static void task_rx(void *pvParameters)
     		switch(received_mb_idx){
     		case RX1_MESSAGE_BUFFER_NUM:
     			/* Start the reception over */
+    			if((rx1Frame.dataByte0 & 0x01) == 1) PRINTF("LED ON\r\n");
+    			else PRINTF("LED OFF\r\n");
             	rx1Xfer.frame = &rx1Frame;
             	rx1Xfer.mbIdx = RX1_MESSAGE_BUFFER_NUM;
         		FLEXCAN_TransferReceiveNonBlocking(EXAMPLE_CAN, &flexcanHandle, &rx1Xfer);
@@ -278,6 +283,7 @@ static void task_rx(void *pvParameters)
     			break;
     		case RX2_MESSAGE_BUFFER_NUM:
     			/* Start the reception over */
+    			period1 = rx2Frame.dataByte0;
             	rx2Xfer.frame = &rx2Frame;
             	rx2Xfer.mbIdx = RX2_MESSAGE_BUFFER_NUM;
         		FLEXCAN_TransferReceiveNonBlocking(EXAMPLE_CAN, &flexcanHandle, &rx2Xfer);
